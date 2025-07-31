@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.abspath("../.."))  # noqa: PTH100
 # the master toctree document
 master_doc: str = "index"
 
-project: str = "sungazer"
+project: str = "tfmate"
 copyright: str = "Christopher Malek 2025"  # noqa: A001
 author: str = "Christopher Malek"
 
