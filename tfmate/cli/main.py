@@ -148,12 +148,16 @@ def show_settings(ctx: click.Context):
     if output_format == "json":
         click.echo(json.dumps(settings.model_dump()))
     elif output_format == "table":
-        # Use click.echo for table output to ensure it works in test environment
-        click.echo("Settings")
-        click.echo("Setting Name          Value")
-        click.echo("───────────────────── ────────")
+        table = Table(
+            title="Settings", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Setting Name", style="cyan")
+        table.add_column("Value", style="green")
+
         for setting_name, setting_value in settings.model_dump().items():
-            click.echo(f"{setting_name:<20} {setting_value}")
+            table.add_row(setting_name, str(setting_value))
+
+        console.print(table)
     else:  # text format
         for setting_name, setting_value in settings.model_dump().items():
             click.echo(f"{setting_name}: {setting_value}")

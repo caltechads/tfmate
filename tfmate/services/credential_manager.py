@@ -42,7 +42,7 @@ class CredentialManager:
                 from rich.console import Console
                 console = Console()
                 console.print(f"[dim]DEBUG:[/dim] Found backend config: {backend_config.type}")
-            
+
             if backend_config and backend_config.type == "s3":
                 credentials = self.extract_s3_backend_credentials(backend_config.config)
                 if verbose:
