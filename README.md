@@ -1,6 +1,6 @@
 # tfmate
 
-**Documentation**: <https://tfmate-ads.readthedocs.org>
+**Documentation**: <https://tfmate.readthedocs.org>
 
 `tfmate` is a command line interface and Python library for analyzing Terraform configurations and state files. It provides powerful tools for understanding your infrastructure as code, including configuration analysis, AWS service discovery, and state file inspection.
 
