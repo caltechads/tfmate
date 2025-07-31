@@ -10,7 +10,7 @@ Make a clone of the bitbucket repo:
 
 .. code-block:: shell
 
-    git clone https://github.com/cmalek/sungazer.git
+    git clone https://github.com/caltechads/tfmate.git
 
 Workflow is pretty straightforward:
 
