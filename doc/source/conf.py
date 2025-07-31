@@ -28,7 +28,7 @@ copyright: str = "Christopher Malek 2025"  # noqa: A001
 author: str = "Christopher Malek"
 
 # The full version, including alpha/beta/rc tags
-release = "0.1.3"
+release = "0.1.4"
 
 
 # -- General configuration ---------------------------------------------------
