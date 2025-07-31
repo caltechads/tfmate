@@ -4,6 +4,10 @@ Using the Command Line Interface
 The ``tfmate`` command-line interface provides supporting functionality for
 working with Terraform code. This guide covers all available commands and options.
 
+.. important::
+
+    **Terraform Workspace Support**: tfmate automatically detects and supports Terraform workspaces. When analyzing Terraform configurations or retrieving version information, only the currently selected workspace will be checked. Workspaces are detected from the ``.terraform/environment`` file or the ``TF_WORKSPACE`` environment variable. If you need to check multiple workspaces, you must switch workspaces manually using ``terraform workspace select``.
+
 Getting Help
 ------------
 
@@ -93,6 +97,31 @@ Example output:
       "required_version": ">= 1.5.0",
       "backend_type": "s3",
       "provider_count": 3,
+      "providers": {
+        "aws": {
+          "region": "us-west-2",
+          "version": "~> 5.0"
+        }
+      },
+      "backend_config": {
+        "bucket": "my-terraform-state",
+        "key": "prod/terraform.tfstate",
+        "region": "us-west-2"
+      }
+    }
+
+Example output with workspace:
+
+.. code-block:: json
+
+    {
+      "directory": "/path/to/terraform",
+      "terraform_block": true,
+      "required_version": ">= 1.5.0",
+      "backend_type": "s3",
+      "provider_count": 3,
+      "workspace": "qa",
+      "workspace_state_path": "s3://my-terraform-state/:env/qa/prod/terraform.tfstate",
       "providers": {
         "aws": {
           "region": "us-west-2",
@@ -225,6 +254,10 @@ Get Terraform version from state file using Terraform-configured credentials:
     # Use JSON output
     tfmate --output json terraform version
 
+.. important::
+
+    **Terraform Workspaces**: If the Terraform directory uses workspaces, only the currently selected workspace will be checked. The workspace is automatically detected from the ``.terraform/environment`` file or the ``TF_WORKSPACE`` environment variable. When a workspace is detected, the command will display workspace information and use the workspace-specific state file path.
+
 Example output:
 
 .. code-block:: json
@@ -233,6 +266,17 @@ Example output:
       "terraform_version": "1.5.7",
       "backend_type": "s3",
       "state_location": "s3://my-terraform-state/prod/terraform.tfstate"
+    }
+
+Example output with workspace:
+
+.. code-block:: json
+
+    {
+      "terraform_version": "1.5.7",
+      "backend_type": "s3",
+      "state_location": "s3://my-terraform-state/prod/terraform.tfstate",
+      "workspace_info": "Currently in workspace 'qa'. Switch workspaces to check versions."
     }
 
 Show Settings
@@ -350,6 +394,12 @@ Advanced Usage Examples
     # Use verbose output for debugging
     tfmate --verbose analyze config
 
+    # Check Terraform version in different workspaces
+    terraform workspace select prod
+    tfmate terraform version
+    terraform workspace select staging
+    tfmate terraform version
+
 Scripting Examples
 ~~~~~~~~~~~~~~~~~~
 
@@ -423,6 +473,17 @@ Common Error Scenarios
         # Solution: Check file permissions
         ls -la
 
+**Workspace State File Not Found**
+    .. code-block:: bash
+
+        # Error: Workspace state file not found
+        tfmate terraform version
+        # Error: State file not found in S3
+
+        # Solution: Check workspace state file path or switch workspaces
+        terraform workspace list
+        terraform workspace select <workspace-name>
+
 Troubleshooting
 ---------------
 
@@ -465,6 +526,12 @@ Common Issues
     - Use `--output json` for machine-readable output
     - Use `--output table` for human-readable output
     - Use `--output text` for simple text output
+
+**Workspace Issues**
+    - Check current workspace with `terraform workspace show`
+    - List available workspaces with `terraform workspace list`
+    - Switch workspaces with `terraform workspace select <name>`
+    - Verify workspace state file exists in the backend
 
 Best Practices
 --------------

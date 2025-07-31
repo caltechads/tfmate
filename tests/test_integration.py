@@ -143,7 +143,7 @@ def test_aws_services_with_real_project():
     assert "services" in result.output or len(result.output.strip().split("\n")) > 0
 
     # Test with filter
-    result = runner.invoke(cli, ["aws", "services", "--filter", "ec*", "--names-only"])
+    result = runner.invoke(cli, ["aws", "services", "--filter-name", "ec*", "--names-only"])
     assert result.exit_code == 0
     # Should return some EC services
     output_lines = result.output.strip().split("\n")
@@ -211,7 +211,7 @@ def test_verbose_output_with_real_project():
     runner = CliRunner()
 
     # Test verbose output with AWS services
-    result = runner.invoke(cli, ["--verbose", "aws", "services", "--filter", "ecs"])
+    result = runner.invoke(cli, ["--verbose", "aws", "services", "--filter-name", "ecs"])
     assert result.exit_code == 0
     # The verbose output goes to stderr, which is captured by pytest
     # We can see it in the test output above
@@ -223,3 +223,259 @@ def test_verbose_output_with_real_project():
     assert result.exit_code == 0
     # The verbose output goes to stderr, which is captured by pytest
     # We can see it in the test output above
+
+
+@pytest.mark.integration
+def test_workspace_detection():
+    """
+    Test workspace detection with a real Terraform project using workspaces.
+
+    This test requires the TFTEST_WORKSPACE_PROJECT_PATH environment variable to be set
+    to point to a real Terraform project directory that uses workspaces.
+    """
+    project_path = os.getenv("TFTEST_WORKSPACE_PROJECT_PATH")
+    if not project_path:
+        pytest.skip("TFTEST_WORKSPACE_PROJECT_PATH environment variable not set")
+
+    project_dir = Path(project_path)
+    if not project_dir.exists():
+        pytest.skip(f"Project path does not exist: {project_path}")
+
+    # Test that we can parse the configuration and detect workspace
+    parser = TerraformParser()
+    config = parser.parse_directory(project_dir)
+
+    # Basic validation - should have some configuration
+    assert config is not None
+
+    # Should have workspace information
+    assert config.workspace is not None
+    assert config.workspace != "default"
+
+    # Should have workspace state path if backend is configured
+    if config.terraform_block:
+        assert config.workspace_state_path is not None
+
+
+@pytest.mark.integration
+def test_workspace_version_command():
+    """
+    Test version command with a real Terraform project using workspaces.
+
+    This test requires the TFTEST_WORKSPACE_PROJECT_PATH environment variable to be set
+    to point to a real Terraform project directory that uses workspaces.
+    """
+    project_path = os.getenv("TFTEST_WORKSPACE_PROJECT_PATH")
+    if not project_path:
+        pytest.skip("TFTEST_WORKSPACE_PROJECT_PATH environment variable not set")
+
+    from click.testing import CliRunner
+    from tfmate.cli.main import cli
+
+    runner = CliRunner()
+
+    # Test terraform version command with workspace
+    result = runner.invoke(cli, ["terraform", "version", "--directory", project_path])
+
+    # Should run without crashing
+    assert result.exit_code in [0, 1]  # 0 for success, 1 for expected errors
+
+    # Test with verbose output to see workspace information
+    result_verbose = runner.invoke(cli, ["--verbose", "terraform", "version", "--directory", project_path])
+
+    # Should contain workspace information in verbose output
+    assert "workspace" in result_verbose.output.lower() or "Detected workspace" in result_verbose.output
+
+
+@pytest.mark.integration
+def test_workspace_configuration_analysis():
+    """
+    Test configuration analysis with a real Terraform project using workspaces.
+
+    This test requires the TFTEST_WORKSPACE_PROJECT_PATH environment variable to be set
+    to point to a real Terraform project directory that uses workspaces.
+    """
+    project_path = os.getenv("TFTEST_WORKSPACE_PROJECT_PATH")
+    if not project_path:
+        pytest.skip("TFTEST_WORKSPACE_PROJECT_PATH environment variable not set")
+
+    from click.testing import CliRunner
+    from tfmate.cli.main import cli
+
+    runner = CliRunner()
+
+    # Test configuration analysis with workspace
+    result = runner.invoke(cli, ["analyze", "config", "--directory", project_path])
+
+    # Should run without crashing
+    assert result.exit_code == 0
+
+    # The output goes to stderr due to rich console, so we can't easily check it in tests
+    # The fact that exit_code is 0 means the command succeeded
+
+
+@pytest.mark.integration
+def test_analyze_config_default_project():
+    """
+    Test analyze config command with a real Terraform project (default case).
+
+    This test requires the TFTEST_PROJECT_PATH environment variable to be set
+    to point to a real Terraform project directory.
+    """
+    project_path = os.getenv("TFTEST_PROJECT_PATH")
+    if not project_path:
+        pytest.skip("TFTEST_PROJECT_PATH environment variable not set")
+
+    project_dir = Path(project_path)
+    if not project_dir.exists():
+        pytest.skip(f"Project path does not exist: {project_path}")
+
+    from click.testing import CliRunner
+    from tfmate.cli.main import cli
+
+    runner = CliRunner()
+
+    # Test basic configuration analysis
+    result = runner.invoke(cli, ["analyze", "config", "--directory", project_path])
+    assert result.exit_code == 0
+
+    # Test with show providers flag
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-providers"]
+    )
+    assert result.exit_code == 0
+
+    # Test with show backend flag
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-backend"]
+    )
+    assert result.exit_code == 0
+
+    # Test with both flags
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-providers", "--show-backend"]
+    )
+    assert result.exit_code == 0
+
+    # Test JSON output format
+    result = runner.invoke(
+        cli, ["--output", "json", "analyze", "config", "--directory", project_path]
+    )
+    assert result.exit_code == 0
+
+    # Validate JSON output structure
+    import json
+    try:
+        data = json.loads(result.output)
+        # Check that we got data back with expected structure
+        assert isinstance(data, dict)
+        assert "directory" in data
+        assert "terraform_block" in data
+        assert "backend_type" in data
+        assert "provider_count" in data
+        assert isinstance(data["provider_count"], int)
+    except json.JSONDecodeError:
+        pytest.fail("Output is not valid JSON")
+
+    # Test verbose output
+    result = runner.invoke(
+        cli, ["--verbose", "analyze", "config", "--directory", project_path]
+    )
+    assert result.exit_code == 0
+
+
+@pytest.mark.integration
+def test_analyze_config_workspace_project():
+    """
+    Test analyze config command with a real Terraform project using workspaces.
+
+    This test requires the TFTEST_WORKSPACE_PROJECT_PATH environment variable to be set
+    to point to a real Terraform project directory that uses workspaces.
+    """
+    project_path = os.getenv("TFTEST_WORKSPACE_PROJECT_PATH")
+    if not project_path:
+        pytest.skip("TFTEST_WORKSPACE_PROJECT_PATH environment variable not set")
+
+    project_dir = Path(project_path)
+    if not project_dir.exists():
+        pytest.skip(f"Project path does not exist: {project_path}")
+
+    from click.testing import CliRunner
+    from tfmate.cli.main import cli
+
+    runner = CliRunner()
+
+    # Test basic configuration analysis with workspace
+    result = runner.invoke(cli, ["analyze", "config", "--directory", project_path])
+    assert result.exit_code == 0
+
+    # Test with show providers flag
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-providers"]
+    )
+    assert result.exit_code == 0
+
+    # Test with show backend flag
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-backend"]
+    )
+    assert result.exit_code == 0
+
+    # Test with both flags
+    result = runner.invoke(
+        cli, ["analyze", "config", "--directory", project_path, "--show-providers", "--show-backend"]
+    )
+    assert result.exit_code == 0
+
+    # Test JSON output format
+    result = runner.invoke(
+        cli, ["--output", "json", "analyze", "config", "--directory", project_path]
+    )
+    assert result.exit_code == 0
+
+    # Validate JSON output structure
+    import json
+    try:
+        data = json.loads(result.output)
+        # Check that we got data back with expected structure
+        assert isinstance(data, dict)
+        assert "directory" in data
+        assert "terraform_block" in data
+        assert "backend_type" in data
+        assert "provider_count" in data
+        assert isinstance(data["provider_count"], int)
+    except json.JSONDecodeError:
+        pytest.fail("Output is not valid JSON")
+
+    # Test verbose output
+    result = runner.invoke(
+        cli, ["--verbose", "analyze", "config", "--directory", project_path]
+    )
+    assert result.exit_code == 0
+
+
+@pytest.mark.integration
+def test_analyze_config_error_cases():
+    """
+    Test analyze config command error handling.
+    """
+    from click.testing import CliRunner
+    from tfmate.cli.main import cli
+
+    runner = CliRunner()
+
+    # Test with non-existent directory
+    result = runner.invoke(cli, ["analyze", "config", "--directory", "/non/existent/path"])
+    assert result.exit_code != 0  # Should fail with error
+
+    # Test with invalid directory path
+    result = runner.invoke(cli, ["analyze", "config", "--directory", ""])
+    assert result.exit_code != 0  # Should fail with error
+
+    # Test with directory that doesn't contain Terraform files
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        result = runner.invoke(cli, ["analyze", "config", "--directory", temp_dir])
+        # This might succeed (empty analysis) or fail, depending on implementation
+        # Just verify it doesn't crash
+        assert result.exit_code in [0, 1]

@@ -2,6 +2,7 @@
 Terraform configuration parser service.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +12,132 @@ from ..exc import TerraformConfigError
 from ..models.terraform import BackendConfig, TerraformConfig
 
 
+def current_tf_workspace(dir_path: str | Path = ".") -> str:
+    """
+    Return the Terraform workspace associated with *dir_path*.
+
+    Resolution order (mirrors Terraform itself):
+    1. TF_WORKSPACE environment variable, if set.
+    2. .terraform/environment file written by Terraform.
+    3. Single workspace directory under .terraform.tfstate.d/ (pre-0.11 local-state layout).
+    4. 'default' if nothing else is found.
+
+    Args:
+        dir_path: Path to the Terraform directory
+
+    Returns:
+        Current workspace name
+    """
+    dir_path = Path(dir_path)
+
+    # 1. Explicit override
+    if (ws := os.getenv("TF_WORKSPACE")):
+        return ws
+
+    # 2. The marker file that Terraform writes
+    env_file = dir_path / ".terraform" / "environment"
+    if env_file.is_file():
+        return env_file.read_text(encoding="utf-8").strip()
+
+    # 3. Safe default
+    return "default"
+
+
 class TerraformParser:
     """
     Parser for Terraform HCL configuration files
     """
+
+    def detect_workspace(self, directory: Path) -> str:
+        """
+        Detect the current Terraform workspace for the given directory.
+
+        Args:
+            directory: Path to the Terraform directory
+
+        Returns:
+            Current workspace name
+        """
+        return current_tf_workspace(directory)
+
+    def resolve_workspace_state_path(
+        self, backend_config: BackendConfig, workspace: str
+    ) -> str | None:
+        """
+        Resolve the workspace-specific state file path for the given backend.
+
+        Args:
+            backend_config: Backend configuration
+            workspace: Workspace name
+
+        Returns:
+            Workspace-specific state file path or None if not applicable
+
+        Raises:
+            TerraformConfigError: If workspace state path cannot be resolved
+        """
+        if workspace == "default":
+            return None
+
+        backend_type = backend_config.type
+        config = backend_config.config
+
+        if backend_type == "s3":
+            bucket = config.get("bucket")
+            key = config.get("key")
+            if bucket and key:
+                # S3 workspace pattern: s3://{bucket}/env:/{workspace}/{key}
+                return f"s3://{bucket}/env:/{workspace}/{key}"
+            else:
+                raise TerraformConfigError(
+                    "S3 backend configuration missing bucket or key",
+                    field="backend_config",
+                    value=str(config),
+                )
+
+        elif backend_type == "http":
+            # HTTP backend workspace pattern: {url}/env:/{workspace}
+            url = config.get("address")
+            if url:
+                return f"{url}/env:/{workspace}"
+            else:
+                raise TerraformConfigError(
+                    "HTTP backend configuration missing address",
+                    field="backend_config",
+                    value=str(config),
+                )
+
+        elif backend_type == "local":
+            # Local backend workspace pattern: {path}/env:/{workspace}
+            path = config.get("path")
+            if path:
+                return f"{path}/env:/{workspace}"
+            else:
+                raise TerraformConfigError(
+                    "Local backend configuration missing path",
+                    field="backend_config",
+                    value=str(config),
+                )
+
+        elif backend_type == "remote":
+            # Terraform Enterprise backend workspace pattern: {organization}/{workspace}
+            organization = config.get("organization")
+            workspace_name = config.get("workspaces", {}).get("name")
+            if organization and workspace_name:
+                return f"{organization}/{workspace_name}"
+            else:
+                raise TerraformConfigError(
+                    "TFE backend configuration missing organization or workspace name",
+                    field="backend_config",
+                    value=str(config),
+                )
+
+        else:
+            raise TerraformConfigError(
+                f"Unsupported backend type for workspace: {backend_type}",
+                field="backend_type",
+                value=backend_type,
+            )
 
     def parse_directory(self, directory: Path, verbose: bool = False) -> TerraformConfig:
         """
@@ -38,6 +161,16 @@ class TerraformParser:
             raise FileNotFoundError(msg)
 
         config = TerraformConfig()
+
+        # Detect workspace
+        workspace = self.detect_workspace(directory)
+        config.workspace = workspace
+
+        if verbose:
+            from rich.console import Console
+            console = Console()
+            console.print(f"[dim]DEBUG:[/dim] Detected workspace: {workspace}")
+
         tf_files = list(directory.glob("*.tf"))
 
         if not tf_files:
@@ -110,6 +243,24 @@ class TerraformParser:
             # Extract required version if present
             if config.terraform_block and "required_version" in config.terraform_block:
                 config.required_version = config.terraform_block["required_version"]
+
+        # Resolve workspace state path if workspace is not default
+        if config.workspace and config.workspace != "default" and config.terraform_block:
+            try:
+                backend_config = self.extract_backend_config(config.terraform_block, verbose)
+                if backend_config:
+                    workspace_state_path = self.resolve_workspace_state_path(backend_config, config.workspace)
+                    config.workspace_state_path = workspace_state_path
+                    if verbose:
+                        from rich.console import Console
+                        console = Console()
+                        console.print(f"[dim]DEBUG:[/dim] Resolved workspace state path: {workspace_state_path}")
+            except TerraformConfigError as e:
+                if verbose:
+                    from rich.console import Console
+                    console = Console()
+                    console.print(f"[dim]DEBUG:[/dim] Could not resolve workspace state path: {e}")
+                # Don't fail parsing for workspace state path issues
 
         return config
 

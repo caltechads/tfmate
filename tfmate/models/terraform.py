@@ -23,6 +23,10 @@ class TerraformConfig(BaseModel):
     )
     #: Required Terraform version
     required_version: str | None = Field(None, description="Required Terraform version")
+    #: Current workspace name
+    workspace: str | None = Field(None, description="Current workspace name")
+    #: Workspace-specific state file path
+    workspace_state_path: str | None = Field(None, description="Workspace-specific state file path")
 
     @field_validator("required_version")
     @classmethod

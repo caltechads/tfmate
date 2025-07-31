@@ -51,6 +51,7 @@ Integration tests require a real Terraform project. Set the environment variable
 
     # Set path to a real Terraform project
     export TFTEST_PROJECT_PATH=/path/to/terraform/project
+    export TFTEST_WORKSPACE_PROJECT_PATH=/path/to/terraform/project-with-workspaces
 
     # Run integration tests
     pytest tests/test_integration.py -v
@@ -58,7 +59,8 @@ Integration tests require a real Terraform project. Set the environment variable
     # Run all tests including integration
     pytest -v
 
-If ``TFTEST_PROJECT_PATH`` is not set, integration tests will be skipped.
+- If ``TFTEST_PROJECT_PATH`` is not set, the non-workspace integration tests will be skipped.
+- If ``TFTEST_WORKSPACE_PROJECT_PATH`` is not set, the workspace integration tests will be skipped.
 
 Test Configuration
 ^^^^^^^^^^^^^^^^^^

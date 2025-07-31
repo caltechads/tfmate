@@ -275,6 +275,217 @@ class TestTerraformParser:
         assert backend.type == "local"
         assert backend.config == {}
 
+    def test_detect_workspace_default(self, tmp_path):
+        """Test workspace detection returns 'default' when no workspace is set."""
+        parser = TerraformParser()
+
+        workspace = parser.detect_workspace(tmp_path)
+
+        assert workspace == "default"
+
+    def test_detect_workspace_from_environment_file(self, tmp_path):
+        """Test workspace detection from .terraform/environment file."""
+        parser = TerraformParser()
+
+        # Create .terraform/environment file
+        terraform_dir = tmp_path / ".terraform"
+        terraform_dir.mkdir()
+        env_file = terraform_dir / "environment"
+        env_file.write_text("prod")
+
+        workspace = parser.detect_workspace(tmp_path)
+
+        assert workspace == "prod"
+
+    def test_detect_workspace_from_environment_variable(self, tmp_path, monkeypatch):
+        """Test workspace detection from TF_WORKSPACE environment variable."""
+        parser = TerraformParser()
+
+        # Set environment variable
+        monkeypatch.setenv("TF_WORKSPACE", "staging")
+
+        workspace = parser.detect_workspace(tmp_path)
+
+        assert workspace == "staging"
+
+    def test_detect_workspace_environment_variable_priority(self, tmp_path, monkeypatch):
+        """Test that TF_WORKSPACE environment variable takes priority over .terraform/environment file."""
+        parser = TerraformParser()
+
+        # Create .terraform/environment file
+        terraform_dir = tmp_path / ".terraform"
+        terraform_dir.mkdir()
+        env_file = terraform_dir / "environment"
+        env_file.write_text("prod")
+
+        # Set environment variable
+        monkeypatch.setenv("TF_WORKSPACE", "staging")
+
+        workspace = parser.detect_workspace(tmp_path)
+
+        assert workspace == "staging"
+
+    def test_resolve_workspace_state_path_s3(self):
+        """Test workspace state path resolution for S3 backend."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="s3", config={"bucket": "my-bucket", "key": "terraform.tfstate"})
+        workspace = "prod"
+
+        state_path = parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert state_path == "s3://my-bucket/env:/prod/terraform.tfstate"
+
+    def test_resolve_workspace_state_path_http(self):
+        """Test workspace state path resolution for HTTP backend."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="http", config={"address": "https://example.com/state"})
+        workspace = "prod"
+
+        state_path = parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert state_path == "https://example.com/state/env:/prod"
+
+    def test_resolve_workspace_state_path_local(self):
+        """Test workspace state path resolution for local backend."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="local", config={"path": "/path/to/state"})
+        workspace = "prod"
+
+        state_path = parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert state_path == "/path/to/state/env:/prod"
+
+    def test_resolve_workspace_state_path_remote(self):
+        """Test workspace state path resolution for TFE backend."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="remote", config={"organization": "my-org", "workspaces": {"name": "my-workspace"}})
+        workspace = "prod"
+
+        state_path = parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert state_path == "my-org/my-workspace"
+
+    def test_resolve_workspace_state_path_default_workspace(self):
+        """Test workspace state path resolution returns None for default workspace."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="s3", config={"bucket": "my-bucket", "key": "terraform.tfstate"})
+        workspace = "default"
+
+        state_path = parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert state_path is None
+
+    def test_resolve_workspace_state_path_missing_s3_config(self):
+        """Test workspace state path resolution raises error for missing S3 config."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="s3", config={"bucket": "my-bucket"})  # Missing key
+        workspace = "prod"
+
+        with pytest.raises(TerraformConfigError) as exc_info:
+            parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert "S3 backend configuration missing bucket or key" in str(exc_info.value)
+
+    def test_resolve_workspace_state_path_missing_http_config(self):
+        """Test workspace state path resolution raises error for missing HTTP config."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="http", config={})  # Missing address
+        workspace = "prod"
+
+        with pytest.raises(TerraformConfigError) as exc_info:
+            parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert "HTTP backend configuration missing address" in str(exc_info.value)
+
+    def test_resolve_workspace_state_path_missing_local_config(self):
+        """Test workspace state path resolution raises error for missing local config."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="local", config={})  # Missing path
+        workspace = "prod"
+
+        with pytest.raises(TerraformConfigError) as exc_info:
+            parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert "Local backend configuration missing path" in str(exc_info.value)
+
+    def test_resolve_workspace_state_path_missing_remote_config(self):
+        """Test workspace state path resolution raises error for missing TFE config."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="remote", config={"organization": "my-org"})  # Missing workspace name
+        workspace = "prod"
+
+        with pytest.raises(TerraformConfigError) as exc_info:
+            parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert "TFE backend configuration missing organization or workspace name" in str(exc_info.value)
+
+    def test_resolve_workspace_state_path_unsupported_backend(self):
+        """Test workspace state path resolution raises error for unsupported backend."""
+        parser = TerraformParser()
+
+        backend_config = Mock(type="unsupported", config={})
+        workspace = "prod"
+
+        with pytest.raises(TerraformConfigError) as exc_info:
+            parser.resolve_workspace_state_path(backend_config, workspace)
+
+        assert "Unsupported backend type for workspace: unsupported" in str(exc_info.value)
+
+    def test_parse_directory_with_workspace(self, tmp_path):
+        """Test parsing directory with workspace detection."""
+        parser = TerraformParser()
+
+        # Create .terraform/environment file
+        terraform_dir = tmp_path / ".terraform"
+        terraform_dir.mkdir()
+        env_file = terraform_dir / "environment"
+        env_file.write_text("prod")
+
+        # Create a test .tf file
+        tf_file = tmp_path / "main.tf"
+        tf_file.write_text("""
+        terraform {
+          required_version = ">= 1.5.0"
+
+          backend "s3" {
+            bucket = "my-terraform-state"
+            key    = "prod/terraform.tfstate"
+            region = "us-west-2"
+          }
+        }
+        """)
+
+        config = parser.parse_directory(tmp_path)
+
+        assert config.workspace == "prod"
+        assert config.workspace_state_path == "s3://my-terraform-state/env:/prod/prod/terraform.tfstate"
+
+    def test_parse_directory_with_default_workspace(self, tmp_path):
+        """Test parsing directory with default workspace."""
+        parser = TerraformParser()
+
+        # Create a test .tf file
+        tf_file = tmp_path / "main.tf"
+        tf_file.write_text("""
+        terraform {
+          required_version = ">= 1.5.0"
+        }
+        """)
+
+        config = parser.parse_directory(tmp_path)
+
+        assert config.workspace == "default"
+        assert config.workspace_state_path is None
+
 
 class TestStateDetector:
     """Test state detector service."""
@@ -379,6 +590,7 @@ class TestStateDetector:
         detector = StateDetector()
 
         mock_config = Mock()
+        mock_config.workspace = "default"  # Use default workspace to avoid env:/ prefix
         mock_config.terraform_block = {
             "backend": [
                 {

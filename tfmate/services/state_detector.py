@@ -71,18 +71,44 @@ class StateDetector:
         }
 
         if backend.type == "local":
-            info["state_file_path"] = str(self.resolve_local_state(directory))
+            # Handle workspace-enabled local backends
+            if config.workspace and config.workspace != "default":
+                # For workspace-enabled local backends, use the workspace-specific path
+                path = backend.config.get("path")
+                if path:
+                    info["state_file_path"] = f"{path}/env:/{config.workspace}"
+                else:
+                    # Fall back to the standard local state path
+                    info["state_file_path"] = str(self.resolve_local_state(directory))
+            else:
+                info["state_file_path"] = str(self.resolve_local_state(directory))
         elif backend.type == "s3":
             info["requires_credentials"] = True
-            info["state_file_path"] = (
-                f"s3://{backend.config.get('bucket')}/{backend.config.get('key')}"
-            )
+            bucket = backend.config.get('bucket')
+            key = backend.config.get('key')
+
+            # Handle workspace-enabled S3 backends
+            if config.workspace and config.workspace != "default":
+                # For workspace-enabled backends, the key should include env:/ prefix
+                info["state_file_path"] = f"s3://{bucket}/env:/{config.workspace}/{key}"
+            else:
+                # For non-workspace backends, use the standard format
+                info["state_file_path"] = f"s3://{bucket}/{key}"
         elif backend.type == "http":
-            info["state_file_path"] = backend.config.get("address")
+            address = backend.config.get("address")
+            # Handle workspace-enabled HTTP backends
+            if config.workspace and config.workspace != "default":
+                info["state_file_path"] = f"{address}/env:/{config.workspace}"
+            else:
+                info["state_file_path"] = address
         elif backend.type == "remote":
             info["requires_credentials"] = True
-            info["state_file_path"] = (
-                f"remote://{backend.config.get('hostname')}/{backend.config.get('organization')}"
-            )
+            hostname = backend.config.get('hostname')
+            organization = backend.config.get('organization')
+            # Remote backends don't use env:/ prefix, they use organization/workspace format
+            if config.workspace and config.workspace != "default":
+                info["state_file_path"] = f"remote://{hostname}/{organization}/{config.workspace}"
+            else:
+                info["state_file_path"] = f"remote://{hostname}/{organization}"
 
         return info

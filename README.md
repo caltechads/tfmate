@@ -107,15 +107,11 @@ To set up a development environment:
 
 ```bash
 # Clone the repository
-git clone https://github.com/cmalek/terraform-common-modules.git
+git clone https://github.com/caltechads/tfmate.git
 cd tfmate
 
-# Create virtual environment
-python -m venv .venv
+uv sync
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install in development mode
-pip install -e .
 
 # Run tests
 pytest
@@ -127,4 +123,4 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+See LICENSE.txt in this project for the license.
