@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import hcl2
+from rich.console import Console
 
 from ..exc import TerraformConfigError
 from ..models.terraform import BackendConfig, TerraformConfig
@@ -167,7 +168,6 @@ class TerraformParser:
         config.workspace = workspace
 
         if verbose:
-            from rich.console import Console
             console = Console()
             console.print(f"[dim]DEBUG:[/dim] Detected workspace: {workspace}")
 
@@ -179,14 +179,13 @@ class TerraformParser:
 
         # Collect all terraform blocks from all files
         all_terraform_blocks = []
+        console = Console()
 
         for tf_file in tf_files:
             try:
                 with Path(tf_file).open(mode="r", encoding="utf-8") as f:
                     parsed = hcl2.load(f)
                     if verbose:
-                        from rich.console import Console
-                        console = Console()
                         console.print(f"[dim]DEBUG:[/dim] Parsing file: {tf_file.name}")
 
                     # Process terraform blocks
@@ -202,8 +201,12 @@ class TerraformParser:
 
                     # Process provider blocks
                     if "provider" in parsed:
-                        for provider in parsed["provider"]:
+                        if verbose:
+                            console.print(f"[dim]DEBUG:[/dim] Found {len(parsed['provider'])} provider blocks in {tf_file.name}")
+                        for provider in parsed['provider']:
                             config.providers.append(provider)
+                            if verbose:
+                                console.print(f"[dim]DEBUG:[/dim] providers: {config.providers}")
 
             except Exception as e:  # noqa: PERF203
                 # HCL2 apparently only throws a generic Exception, so we need
@@ -220,7 +223,6 @@ class TerraformParser:
             terraform_block_with_backend = None
             for i, block in enumerate(all_terraform_blocks):
                 if verbose:
-                    from rich.console import Console
                     console = Console()
                     console.print(f"[dim]DEBUG:[/dim] Evaluating terraform block {i}: {list(block.keys())}")
 
@@ -252,15 +254,17 @@ class TerraformParser:
                     workspace_state_path = self.resolve_workspace_state_path(backend_config, config.workspace)
                     config.workspace_state_path = workspace_state_path
                     if verbose:
-                        from rich.console import Console
                         console = Console()
                         console.print(f"[dim]DEBUG:[/dim] Resolved workspace state path: {workspace_state_path}")
             except TerraformConfigError as e:
                 if verbose:
-                    from rich.console import Console
                     console = Console()
                     console.print(f"[dim]DEBUG:[/dim] Could not resolve workspace state path: {e}")
                 # Don't fail parsing for workspace state path issues
+
+        if verbose:
+            console = Console()
+            console.print(f"[dim]DEBUG:[/dim] Final config: {config}")
 
         return config
 
@@ -305,7 +309,6 @@ class TerraformParser:
 
         """
         if verbose:
-            from rich.console import Console
             console = Console()
             console.print(f"[dim]DEBUG:[/dim] Parsed content keys: {list(parsed.keys())}")
 
@@ -361,7 +364,6 @@ class TerraformParser:
 
         """
         if verbose:
-            from rich.console import Console
             console = Console()
             console.print(f"[dim]DEBUG:[/dim] Terraform block keys: {list(terraform_block.keys())}")
 

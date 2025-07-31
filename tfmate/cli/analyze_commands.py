@@ -54,7 +54,7 @@ def analyze_config(  # noqa: PLR0912
         with create_progress() as progress:
             task = progress.add_task("Parsing Terraform files...", total=None)
             parser = TerraformParser()
-            config = parser.parse_directory(directory_path)
+            config = parser.parse_directory(directory_path, verbose=verbose)
             progress.update(task, description="Analyzing configuration...")
 
             detector = StateDetector()
@@ -110,8 +110,9 @@ def analyze_config(  # noqa: PLR0912
                 provider_table.add_column("Configuration", style="yellow")
 
                 for provider in config.providers:
-                    provider_name = provider.get("name", "Unknown")
-                    provider_config = str(provider.get("config", {}))
+                    key = list(provider.keys())[0]
+                    provider_name = key
+                    provider_config = str(provider.get(key, {}))
                     provider_table.add_row(provider_name, provider_config)
 
                 console.print(provider_table)

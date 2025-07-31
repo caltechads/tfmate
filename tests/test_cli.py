@@ -144,6 +144,9 @@ class TestCLICommands:
         )
         assert result.exit_code == 0
         assert "Provider Configurations" in result.output
+        assert "aws" in result.output
+        assert "region" in result.output
+        assert "us-west-2" in result.output
 
     def test_analyze_config_json_output(self, tmp_path):
         """Test analyze config command with JSON output."""
